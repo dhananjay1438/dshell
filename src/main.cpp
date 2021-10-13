@@ -39,8 +39,9 @@ std::vector<std::string> dshell_split_line(std::string str) {
 int dshell_execute(std::vector<std::string> args) {
 
   pid_t pid, wpid;
-
   int status;
+  pid = fork();
+
   // Why the hell char* argv[] was causing error and not this one
   char **argv = (char **)malloc(sizeof(char *) * args.size());
 
@@ -48,22 +49,23 @@ int dshell_execute(std::vector<std::string> args) {
   for (size_t i = 0; i < args.size(); i++) {
     argv[i] = const_cast<char *>(args[i].c_str());
   }
-  pid = fork();
   if (pid == 0) {
     char buffer[1024];
     getcwd(buffer, 1024);
     char *current_directory = buffer;
     if ((strcmp(argv[0], "cd") == 0)) {
-      if (argv[1][0] == '/') {
+      if (args.size() == 1) {
+        chdir(getenv("HOME"));
+      } else if (argv[1][0] == '/') {
         chdir(argv[1]);
       } else if (argv[1][0] == '.') {
         chdir(argv[1]);
+      } else if (argv[1][0] == '~' || strcmp(argv[1], "") == 0) {
+        chdir(getenv("HOME"));
       } else if (argv[1] != nullptr) {
         strcat(current_directory, "/");
         strcat(current_directory, argv[1]);
         chdir(current_directory);
-      } else {
-        chdir(getenv("HOME"));
       }
     } else if (strcmp(argv[0], "ls") == 0) {
       execvp("ls", argv);
@@ -83,8 +85,10 @@ void dshell_loop() {
   std::string line;
   std::vector<std::string> args;
   int status = 0;
+  char buff[1024];
   do {
-    std::cout << "~ ";
+    getcwd(buff, 1024);
+    std::cout << buff << " $ ";
     line = dshell_read_line();
     args = dshell_split_line(line);
     status = dshell_execute(args);
