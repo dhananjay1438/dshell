@@ -300,64 +300,6 @@ bool check_for_pipe(std::string line) {
     return false;
   }
 }
-
-/*
-int spawn_proc(int in, int out, std::vector<std::string> args) {
-  pid_t pid;
-
-  if ((pid = fork()) == 0) {
-    if (in != 0) {
-      dup2(in, 0);
-      close(in);
-    }
-
-    if (out != 1) {
-      dup2(out, 1);
-      close(out);
-    }
-    char **argv = (char **)malloc(sizeof(char *) * args.size());
-
-    for (size_t i = 0; i < args.size(); i++) {
-      argv[i] = const_cast<char *>(args[i].c_str());
-    }
-    return execvp(argv[0], argv);
-  }
-
-  return pid;
-}
-int fork_pipes(std::string line) {
-
-  int fd[2];
-  int in = 0;
-  size_t i;
-
-  std::vector<std::string> commands = split_line_with_delimiter(line, '|');
-  in = 0;
-
-  for (i = 0; i < commands.size() - 1; ++i) {
-    pipe(fd);
-
-    spawn_proc(in, fd[1], split_line_with_delimiter(trim(commands[i]), ' '));
-
-    close(fd[1]);
-
-    in = fd[0];
-  }
-
-  if (in != 0)
-    dup2(in, 0);
-
-  trim(commands[i]);
-  std::vector<std::string> args = split_line_with_delimiter(commands[i], ' ');
-  char **argv = (char **)malloc(sizeof(char *) * args.size());
-
-  for (size_t i = 0; i < args.size(); i++) {
-    argv[i] = const_cast<char *>(args[i].c_str());
-  }
-
-  //Execute the last stage with the current process.
-return execvp(argv[0], argv);
-}*/
 void dshell_loop() {
   std::string line;
   std::vector<std::string> args;
