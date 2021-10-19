@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <signal.h>
 #include <sstream>
 #include <stdlib.h>
 #include <string.h>
@@ -13,7 +14,9 @@
 #include <unistd.h>
 #include <vector>
 
+std::string get_current_directory();
 void execute_pipe_commands(std::string line);
+void dshell_loop();
 class builtInCommands {
   // TODO Implement these methods and try to learn about these
 public:
@@ -177,10 +180,15 @@ char **convert_vector_to_char_star_star(std::vector<std::string> args) {
   }
   return argv;
 }
+static volatile sig_atomic_t handler = 1;
+void sig_int_handler(int num) {
+  std::string directory = get_current_directory();
+  std::cout << "\n" << directory;
+  std::fflush(stdout);
+};
 
 // TODO: Add one more bool for redirection
-int dshell_execute(int in, int out, std::vector<std::string> args,
-                   bool uses_pipe, std::string line) {
+int dshell_execute(std::string line, bool uses_pipe) {
 
   pid_t pid, wpid;
   pid = fork();
@@ -188,6 +196,7 @@ int dshell_execute(int in, int out, std::vector<std::string> args,
 
   // Why the hell char* argv[] was causing error and not this one
 
+  std::vector<std::string> args = split_line_with_delimiter(line, ' ');
   char **argv = (char **)malloc(sizeof(char *) * args.size());
 
   // converting vector to char** (required for execvp)
@@ -196,6 +205,11 @@ int dshell_execute(int in, int out, std::vector<std::string> args,
   }
   //  char **argv = convert_vector_to_char_star_star(args);
   if (pid == 0) {
+    if (!handler) {
+      handler = 1;
+      dshell_loop();
+      return 1;
+    }
     if (uses_pipe) {
       execute_pipe_commands(line);
     }
@@ -225,9 +239,14 @@ int dshell_execute(int in, int out, std::vector<std::string> args,
       return -3;
     }
   } else {
+    if (!handler) {
+      handler = 1;
+      dshell_loop();
+      return 1;
+    }
     wpid = waitpid(pid, &status, WUNTRACED);
+    free(argv);
   }
-  free(argv);
   return 1;
 }
 void execute(int in, int out, std::vector<std::string> args) {
@@ -249,6 +268,7 @@ void execute(int in, int out, std::vector<std::string> args) {
     }
     execvp(argv[0], argv);
   }
+  free(argv);
 }
 void execute_pipe_commands(std::string line) {
   std::vector<std::string> commands = split_line_with_delimiter(line, '|');
@@ -305,20 +325,24 @@ void dshell_loop() {
   std::vector<std::string> args;
   int status = 0;
   do {
+    signal(SIGINT, sig_int_handler);
     std::cout << get_current_directory();
     line = dshell_read_line();
     add_to_history(line);
-
-    args = split_line_with_delimiter(line, ' ');
+    if (line.compare("exit") == 0 || line.compare("quit") == 0) {
+      status = 0;
+      return;
+    }
     if (check_for_pipe(line)) {
-      status = dshell_execute(0, 0, args, true, line);
+      status = dshell_execute(line, true);
     } else {
-      status = dshell_execute(0, 0, args, false, line);
+      status = dshell_execute(line, false);
     }
   } while (status != 0);
 }
 
 int main(void) {
+
   dshell_loop();
   return 0;
 }
