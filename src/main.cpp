@@ -325,7 +325,10 @@ void dshell_loop() {
   std::vector<std::string> args;
   int status = 0;
   do {
-    signal(SIGINT, sig_int_handler);
+    struct sigaction sg;
+    sg.sa_flags = SA_RESTART;
+    sg.sa_handler = sig_int_handler;
+    sigaction(SIGINT, &sg, NULL);
     std::cout << get_current_directory();
     line = dshell_read_line();
     add_to_history(line);
