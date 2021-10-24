@@ -14,7 +14,10 @@
 #include <unistd.h>
 #include <vector>
 
+// TODO: Make cat command work with pipes
 #define SHELL_NAME "dshell"
+std::fstream DSHELL_HISTORY_FILE(".dshell_history", std::ios::app);
+
 std::string get_current_directory();
 void execute_pipe_commands(std::string line);
 void dshell_loop();
@@ -204,19 +207,29 @@ int dshell_execute(std::string line, bool uses_pipe) {
   for (size_t i = 0; i < args.size(); i++) {
     argv[i] = const_cast<char *>(args[i].c_str());
   }
-  //  char **argv = convert_vector_to_char_star_star(args);
+  /* Required inorder to change directory suppose you are at /path (i.e
+   current directory )and if you didn't append "/" at the end then the path
+   becomes /pathfile instead of path/file */
+  char *current_directory = get_current_dir_name();
+  strcat(current_directory, "/");
 
+  /*
+   * Not using this condition after forking because for every cd invokation it
+   * creates a new process, For ex: If you do "cd .." and "cd .." it will create
+   * two new processes (so in total 3)
+   */
+  if (!uses_pipe) {
+    if ((strcmp(argv[0], "cd") == 0)) {
+      change_directory(current_directory, argv, args.size());
+      return 1;
+    }
+  }
   pid = fork();
   if (pid == 0) {
     if (uses_pipe) {
       execute_pipe_commands(line);
       return 1;
     }
-    char *current_directory = get_current_dir_name();
-    /* Required inorder to change directory suppose you are at /path (i.e
-     current directory )and if you didn't append "/" at the end then the path
-     becomes /pathfile instead of path/file */
-    strcat(current_directory, "/");
     if ((strcmp(argv[0], "history")) == 0) {
       get_history(argv, args.size());
     } else if ((strcmp(argv[0], "cd") == 0)) {
@@ -320,8 +333,18 @@ std::string get_current_directory() {
   return current_directory;
 }
 void add_to_history(std::string line) {
+  if (DSHELL_HISTORY_FILE.bad()) {
+    std::cerr << "Cannot create history file for dshell, you will only be able "
+                 "to see history from this session\n";
+  }
+  /* If history command itself is not found in command then only add it to
+   *  history
+   */
   if (line.find("history") == std::string::npos) {
     hist.add(line);
+    DSHELL_HISTORY_FILE.write(line.c_str(), static_cast<long>(line.size()));
+    // Adding newline after every line
+    DSHELL_HISTORY_FILE.write("\n", 1);
   }
 }
 bool check_for_pipe(std::string line) {
