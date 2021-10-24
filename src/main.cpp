@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <vector>
 
+#define SHELL_NAME "dshell"
 std::string get_current_directory();
 void execute_pipe_commands(std::string line);
 void dshell_loop();
@@ -64,7 +65,7 @@ void history::show() {
 }
 
 history hist;
-std::string trim(std::string &command) {
+std::string trim(std::string command) {
   command.erase(command.find_last_not_of(' ') + 1);
   command.erase(0, command.find_first_not_of(' '));
   return command;
@@ -84,10 +85,10 @@ std::vector<std::string> split_line_with_delimiter(std::string line,
   std::string::size_type whitespace, current = 0;
 
   while ((whitespace = line.find(split, current)) != std::string::npos) {
-    tokens.push_back(line.substr(current, whitespace - current));
+    tokens.push_back(trim(line.substr(current, whitespace - current)));
     current = whitespace + 1;
   }
-  tokens.push_back(line.substr(current, whitespace - current));
+  tokens.push_back(trim(line.substr(current, whitespace - current)));
 
   return tokens;
 }
@@ -96,6 +97,7 @@ bool check_if_command_exists(char *command) {
   std::string path = getenv("PATH");
   std::vector<std::string> paths = split_line_with_delimiter(path, ':');
   struct stat stats;
+  // If command is found at any location from path returns true
   for (auto &loc : paths) {
     loc = loc.append("/");
     if (stat(loc.append(command).c_str(), &stats) == 0) {
@@ -180,8 +182,8 @@ char **convert_vector_to_char_star_star(std::vector<std::string> args) {
   }
   return argv;
 }
-static volatile sig_atomic_t handler = 1;
-void sig_int_handler(int num) {
+void sig_int_handler(int _) {
+  (void)_;
   std::string directory = get_current_directory();
   std::cout << "\n" << directory;
   std::fflush(stdout);
@@ -191,7 +193,6 @@ void sig_int_handler(int num) {
 int dshell_execute(std::string line, bool uses_pipe) {
 
   pid_t pid, wpid;
-  pid = fork();
   int status;
 
   // Why the hell char* argv[] was causing error and not this one
@@ -204,14 +205,12 @@ int dshell_execute(std::string line, bool uses_pipe) {
     argv[i] = const_cast<char *>(args[i].c_str());
   }
   //  char **argv = convert_vector_to_char_star_star(args);
+
+  pid = fork();
   if (pid == 0) {
-    if (!handler) {
-      handler = 1;
-      dshell_loop();
-      return 1;
-    }
     if (uses_pipe) {
       execute_pipe_commands(line);
+      return 1;
     }
     char *current_directory = get_current_dir_name();
     /* Required inorder to change directory suppose you are at /path (i.e
@@ -236,14 +235,8 @@ int dshell_execute(std::string line, bool uses_pipe) {
       if (execvp(argv[0], argv) < 0) {
         std::cerr << "Some error occured";
       }
-      return -3;
     }
   } else {
-    if (!handler) {
-      handler = 1;
-      dshell_loop();
-      return 1;
-    }
     wpid = waitpid(pid, &status, WUNTRACED);
     free(argv);
   }
@@ -255,9 +248,12 @@ void execute(int in, int out, std::vector<std::string> args) {
 
   // converting vector to char** (required for execvp)
   for (size_t i = 0; i < args.size(); i++) {
+    std::cout << args[i] << std::endl;
     argv[i] = const_cast<char *>(args[i].c_str());
   }
-  if (fork() == 0) {
+  return;
+  pid_t pid = fork();
+  if (pid == 0) {
     if (in != 0) {
       dup2(in, 0);
       close(in);
@@ -266,15 +262,30 @@ void execute(int in, int out, std::vector<std::string> args) {
       dup2(out, 1);
       close(out);
     }
-    execvp(argv[0], argv);
+    if (strcmp(argv[0], "cat") == 0) {
+      std::cout << "Here\n";
+      std::fflush(stdout);
+      cat(argv, args.size());
+    } else {
+      execvp(argv[0], argv);
+    }
+  } else {
+    wait(NULL);
   }
-  free(argv);
 }
 void execute_pipe_commands(std::string line) {
   std::vector<std::string> commands = split_line_with_delimiter(line, '|');
   int fd[2];
   int in = 0;
   size_t i;
+  for (auto string : commands) {
+    std::vector<std::string> command = split_line_with_delimiter(string, ' ');
+    if (!check_if_command_exists(const_cast<char *>(command[0].c_str()))) {
+      std::cout << SHELL_NAME << ": command not found '" << command[0] << "'"
+                << std::endl;
+      return;
+    }
+  }
   for (i = 0; i < commands.size() - 1; i++) {
     pipe(fd);
     execute(in, fd[1], split_line_with_delimiter(trim(commands[i]), ' '));
@@ -285,7 +296,7 @@ void execute_pipe_commands(std::string line) {
     dup2(in, 0);
   }
   trim(commands[i]);
-  std::cout << commands[i];
+  std::cout << commands[i] << std::endl;
   std::vector<std::string> args = split_line_with_delimiter(commands[i], ' ');
   char **argv = (char **)malloc(sizeof(char *) * args.size());
 
@@ -320,7 +331,9 @@ bool check_for_pipe(std::string line) {
     return false;
   }
 }
-void dshell_loop() {
+
+int main(void) {
+
   std::string line;
   std::vector<std::string> args;
   int status = 0;
@@ -334,7 +347,7 @@ void dshell_loop() {
     add_to_history(line);
     if (line.compare("exit") == 0 || line.compare("quit") == 0) {
       status = 0;
-      return;
+      return -1;
     }
     if (check_for_pipe(line)) {
       status = dshell_execute(line, true);
@@ -342,10 +355,5 @@ void dshell_loop() {
       status = dshell_execute(line, false);
     }
   } while (status != 0);
-}
-
-int main(void) {
-
-  dshell_loop();
   return 0;
 }
