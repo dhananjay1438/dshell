@@ -15,6 +15,9 @@
 #include <vector>
 
 // TODO: Make cat command work with pipes
+// TODO: input cat main.cpp | wc then press Ctrl+c to close the running command,
+// then press enter it wil just give some error occured and it creates two
+// processes
 #define SHELL_NAME "dshell"
 std::fstream DSHELL_HISTORY_FILE(".dshell_history", std::ios::app);
 
@@ -261,10 +264,8 @@ void execute(int in, int out, std::vector<std::string> args) {
 
   // converting vector to char** (required for execvp)
   for (size_t i = 0; i < args.size(); i++) {
-    std::cout << args[i] << std::endl;
     argv[i] = const_cast<char *>(args[i].c_str());
   }
-  return;
   pid_t pid = fork();
   if (pid == 0) {
     if (in != 0) {
@@ -276,8 +277,6 @@ void execute(int in, int out, std::vector<std::string> args) {
       close(out);
     }
     if (strcmp(argv[0], "cat") == 0) {
-      std::cout << "Here\n";
-      std::fflush(stdout);
       cat(argv, args.size());
     } else {
       execvp(argv[0], argv);
@@ -294,9 +293,8 @@ void execute_pipe_commands(std::string line) {
   for (auto string : commands) {
     std::vector<std::string> command = split_line_with_delimiter(string, ' ');
     if (!check_if_command_exists(const_cast<char *>(command[0].c_str()))) {
-      std::cout << SHELL_NAME << ": command not found '" << command[0] << "'"
+      std::cerr << SHELL_NAME << ": command not found '" << command[0] << "'"
                 << std::endl;
-      return;
     }
   }
   for (i = 0; i < commands.size() - 1; i++) {
@@ -309,7 +307,6 @@ void execute_pipe_commands(std::string line) {
     dup2(in, 0);
   }
   trim(commands[i]);
-  std::cout << commands[i] << std::endl;
   std::vector<std::string> args = split_line_with_delimiter(commands[i], ' ');
   char **argv = (char **)malloc(sizeof(char *) * args.size());
 
@@ -371,6 +368,10 @@ int main(void) {
     if (line.compare("exit") == 0 || line.compare("quit") == 0) {
       status = 0;
       return -1;
+    }
+    if (line.empty()) {
+      status = 1;
+      continue;
     }
     if (check_for_pipe(line)) {
       status = dshell_execute(line, true);
